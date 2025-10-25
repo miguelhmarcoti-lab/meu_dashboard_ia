@@ -1,0 +1,286 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+
+# Configuração da página
+st.set_page_config(page_title="Satisfação de Passageiros",
+                   page_icon="✈️",
+                   layout="wide")
+
+# --- 1. GERAÇÃO DE DADOS FICTÍCIOS E TREINAMENTO DO MODELO ---
+# (Substitua esta seção pelo carregamento do seu CSV e do seu modelo)
+
+@st.cache_data
+def load_data():
+    """Gera dados fictícios. Substitua por pd.read_csv('seu_arquivo.csv')"""
+    data = {
+        'Gender': np.random.choice(['Female', 'Male'], 1000),
+        'Customer Type': np.random.choice(['Loyal Customer', 'disloyal Customer'], 1000),
+        'Age': np.random.randint(7, 85, 1000),
+        'Type of Travel': np.random.choice(['Personal Travel', 'Business travel'], 1000),
+        'Class': np.random.choice(['Eco', 'Eco Plus', 'Business'], 1000),
+        'Flight Distance': np.random.randint(100, 5000, 1000),
+        'Inflight wifi service': np.random.randint(0, 6, 1000),
+        'Ease of Online booking': np.random.randint(0, 6, 1000),
+        'Food and drink': np.random.randint(0, 6, 1000),
+        'Online boarding': np.random.randint(0, 6, 1000),
+        'Seat comfort': np.random.randint(0, 6, 1000),
+        'Inflight entertainment': np.random.randint(0, 6, 1000),
+        'Baggage handling': np.random.randint(1, 6, 1000),
+        'Checkin service': np.random.randint(1, 6, 1000),
+        'Inflight service': np.random.randint(1, 6, 1000),
+        'Cleanliness': np.random.randint(1, 6, 1000),
+        'Departure Delay in Minutes': np.random.randint(0, 60, 1000),
+        'satisfaction': np.random.choice(['satisfied', 'neutral or dissatisfied'], 1000)
+    }
+    df = pd.DataFrame(data)
+    
+    # IMPORTANTE: Transformar o target em binário (0 ou 1)
+    df['satisfaction'] = df['satisfaction'].apply(lambda x: 1 if x == 'satisfied' else 0)
+    return df
+
+@st.cache_resource
+def train_model(df):
+    """Treina um pipeline completo com Random Forest."""
+    
+    # Define o target e as features
+    TARGET = 'satisfaction'
+    
+    # Identifica colunas numéricas e categóricas
+    # Exclui o target das features numéricas
+    numeric_features = df.select_dtypes(include=np.number).columns.drop(TARGET)
+    categorical_features = df.select_dtypes(include='object').columns
+    
+    # Cria pipelines de pré-processamento
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')), # Trata NaNs
+        ('scaler', StandardScaler())])                 # Normalização
+
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='most_frequent')), # Trata NaNs
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))])  # Transforma em dummies
+    
+    # Junta os transformers em um pré-processador
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)])
+    
+    # Cria o pipeline final com o modelo
+    model_pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10))
+    ])
+    
+    # Divide os dados
+    X = df.drop(TARGET, axis=1)
+    y = df[TARGET]
+    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Treina o modelo (usando todos os dados para este exemplo de dashboard)
+    model_pipeline.fit(X, y)
+    
+    # Retorna o modelo treinado e as listas de features
+    return model_pipeline, numeric_features, categorical_features, X
+
+# --- Carrega os dados e treina o modelo ---
+df = load_data()
+model, numeric_features, categorical_features, X_example = train_model(df.copy())
+# -------------------------------------------------------------------
+
+
+# --- 2. CONSTRUÇÃO DO DASHBOARD ---
+
+st.title("✈️ Dashboard: Análise de Satisfação de Passageiros")
+
+# Cria as abas
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Sobre o Projeto", 
+    "Análise Exploratória", 
+    "Fatores de Satisfação (Modelo)", 
+    "Simulador de Satisfação"
+])
+
+# --- Aba 1: Sobre o Projeto ---
+with tab1:
+    st.header("Entendendo a Satisfação do Passageiro")
+    st.image("https://images.unsplash.com/photo-1570129599923-116390ed313b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1470&q=80", 
+             caption="Foto por Imat Bagja Gumilar no Unsplash",
+             use_column_width=True)
+    st.write("""
+    Este dashboard é o produto digital para a matéria de Ciência de Dados, 
+    focado em analisar dados de uma pesquisa de satisfação de passageiros de uma companhia aérea.
+    
+    **Objetivo:** Identificar os fatores que mais impactam a satisfação (ou insatisfação)
+    dos clientes e criar um modelo preditivo.
+    
+    **Base de Dados:** O dataset contém respostas de pesquisas de passageiros, incluindo 
+    informações demográficas, detalhes do voo e avaliações de serviços (de 0 a 5).
+    
+    **Modelo:** Utilizamos um `RandomForestClassifier` para prever a satisfação 
+    (classe 1: 'satisfeito', classe 0: 'neutro ou insatisfeito').
+    """)
+    
+    st.subheader("Amostra dos Dados")
+    st.write("Obs: O target 'satisfaction' foi convertido para 1 (satisfeito) e 0 (insatisfeito/neutro).")
+    st.dataframe(df.head())
+
+# --- Aba 2: Análise Exploratória ---
+with tab2:
+    st.header("Analisando o Perfil dos Passageiros")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Satisfação por Classe de Voo")
+        # Gráfico de barras com Plotly
+        fig1 = px.histogram(df, x='Class', color='satisfaction', 
+                            barmode='group', text_auto=True,
+                            title='Contagem de Satisfação por Classe')
+        st.plotly_chart(fig1, use_container_width=True)
+        
+        st.subheader("Satisfação por Tipo de Viagem")
+        fig2 = px.histogram(df, x='Type of Travel', color='satisfaction', 
+                            barmode='group', text_auto=True,
+                            title='Contagem de Satisfação por Tipo de Viagem')
+        st.plotly_chart(fig2, use_container_width=True)
+
+    with col2:
+        st.subheader("Relação: Idade, Distância e Satisfação")
+        # Gráfico de dispersão com Plotly
+        fig3 = px.scatter(df, x='Age', y='Flight Distance', 
+                          color='satisfaction', opacity=0.7,
+                          title='Idade vs. Distância do Voo (Colorido por Satisfação)')
+        st.plotly_chart(fig3, use_container_width=True)
+
+        st.subheader("Avaliação Média dos Serviços (por Satisfeitos vs. Insatisfeitos)")
+        # Calcula médias
+        service_cols = ['Inflight wifi service', 'Ease of Online booking', 'Food and drink', 
+                        'Online boarding', 'Seat comfort', 'Inflight entertainment', 
+                        'Baggage handling', 'Checkin service', 'Inflight service', 'Cleanliness']
+        df_melted = df.melt(id_vars=['satisfaction'], value_vars=service_cols, 
+                            var_name='Serviço', value_name='Avaliação')
+        df_avg = df_melted.groupby(['satisfaction', 'Serviço'])['Avaliação'].mean().reset_index()
+
+        fig4 = px.bar(df_avg, x='Serviço', y='Avaliação', color='satisfaction', 
+                      barmode='group', title='Avaliação Média dos Serviços')
+        st.plotly_chart(fig4, use_container_width=True)
+
+# --- Aba 3: Fatores de Satisfação (Feature Importance) ---
+with tab3:
+    st.header("Quais são os principais atributos?")
+    st.write("""
+    Aqui, usamos a propriedade `feature_importances_` do nosso modelo Random Forest
+    para entender quais fatores ele mais considerou para tomar uma decisão.
+    """)
+
+    # Extrair o modelo e o pré-processador do pipeline
+    rf_model = model.named_steps['classifier']
+    preprocessor = model.named_steps['preprocessor']
+    
+    # Obter os nomes das features após o OneHotEncoding
+    ohe_features = preprocessor.named_transformers_['cat']\
+                               .named_steps['onehot']\
+                               .get_feature_names_out(categorical_features)
+    
+    # Juntar features numéricas e categóricas (pós-OHE)
+    all_feature_names = list(numeric_features) + list(ohe_features)
+    
+    # Criar DataFrame de importância
+    importance_df = pd.DataFrame({
+        'Feature': all_feature_names,
+        'Importance': rf_model.feature_importances_
+    }).sort_values(by='Importance', ascending=False)
+
+    # Plotar com Plotly
+    st.subheader("Importância dos Atributos (Feature Importance)")
+    fig_importance = px.bar(importance_df.head(20), 
+                            x='Importance', 
+                            y='Feature', 
+                            orientation='h', 
+                            title='Top 20 Atributos Mais Importantes',
+                            text='Importance')
+    fig_importance.update_layout(yaxis_title='Atributo', xaxis_title='Importância')
+    fig_importance.update_traces(texttemplate='%{text:.3f}', textposition='outside')
+    st.plotly_chart(fig_importance, use_container_width=True)
+    
+    with st.expander("Ver tabela completa de importância"):
+        st.dataframe(importance_df)
+
+# --- Aba 4: Simulador de Satisfação ---
+with tab4:
+    st.header("Simulador de Satisfação do Passageiro")
+    st.write("Insira os dados de um passageiro fictício para prever sua satisfação.")
+    
+    # Usar um formulário para agrupar os inputs
+    with st.form("prediction_form"):
+        input_data = {}
+        
+        # Dividir em colunas para melhor layout
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Informações Pessoais e Voo")
+            input_data['Gender'] = st.selectbox('Gênero', options=df['Gender'].unique())
+            input_data['Customer Type'] = st.selectbox('Tipo de Cliente', options=df['Customer Type'].unique())
+            input_data['Age'] = st.slider('Idade', min_value=5, max_value=100, value=30)
+            input_data['Type of Travel'] = st.selectbox('Tipo de Viagem', options=df['Type of Travel'].unique())
+            input_data['Class'] = st.selectbox('Classe', options=df['Class'].unique())
+            input_data['Flight Distance'] = st.slider('Distância do Voo (km)', min_value=50, max_value=5000, value=1000)
+            input_data['Departure Delay in Minutes'] = st.slider('Atraso na Partida (min)', min_value=0, max_value=300, value=10)
+
+        with col2:
+            st.subheader("Avaliação dos Serviços (0=Péssimo, 5=Excelente)")
+            # Usando select_slider para as avaliações
+            ratings = [0, 1, 2, 3, 4, 5]
+            input_data['Inflight wifi service'] = st.select_slider('Serviço de Wi-Fi', options=ratings, value=3)
+            input_data['Ease of Online booking'] = st.select_slider('Facilidade de Reserva Online', options=ratings, value=3)
+            input_data['Food and drink'] = st.select_slider('Comida e Bebida', options=ratings, value=3)
+            input_data['Online boarding'] = st.select_slider('Embarque Online', options=ratings, value=3)
+            input_data['Seat comfort'] = st.select_slider('Conforto do Assento', options=ratings, value=3)
+            input_data['Inflight entertainment'] = st.select_slider('Entretenimento', options=ratings, value=3)
+            input_data['Baggage handling'] = st.select_slider('Manuseio de Bagagem', options=ratings, value=3)
+            input_data['Checkin service'] = st.select_slider('Serviço de Check-in', options=ratings, value=3)
+            input_data['Inflight service'] = st.select_slider('Serviço de Bordo', options=ratings, value=3)
+            input_data['Cleanliness'] = st.select_slider('Limpeza', options=ratings, value=3)
+        
+        # Botão de envio
+        submitted = st.form_submit_button("Prever Satisfação")
+
+    if submitted:
+        # Criar um DataFrame com os dados de entrada
+        # É CRUCIAL que a ordem e os nomes das colunas batam com o X do treino
+        input_df = pd.DataFrame([input_data])
+        
+        # Garantir que as colunas estejam na mesma ordem do X_example (dados de treino)
+        input_df = input_df[X_example.columns]
+        
+        # Fazer a predição
+        try:
+            prediction = model.predict(input_df)
+            prediction_proba = model.predict_proba(input_df)
+            
+            # Exibir o resultado
+            st.subheader("Resultado da Predição")
+            
+            prob_satisfied = prediction_proba[0][1] * 100 # Probabilidade de ser classe 1 (satisfeito)
+            
+            if prediction[0] == 1:
+                st.success(f"Cliente Satisfeito! (Probabilidade: {prob_satisfied:.2f}%)")
+                st.balloons()
+            else:
+                st.error(f"Cliente Insatisfeito ou Neutro (Probabilidade de estar satisfeito: {prob_satisfied:.2f}%)")
+            
+            st.write("---")
+            st.write("Dados inseridos para predição:")
+            st.dataframe(input_df)
+
+        except Exception as e:
+            st.error(f"Erro ao fazer a predição: {e}")
