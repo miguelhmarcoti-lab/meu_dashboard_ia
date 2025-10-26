@@ -26,15 +26,14 @@ def load_data(train_path, test_path):
     # O RF até lidaria com NaNs, mas o get_dummies não. É melhor tratar.
     for df in [df_train, df_test]:
         df['Arrival Delay in Minutes'] = df['Arrival Delay in Minutes'].fillna(df['Arrival Delay in Minutes'].median())
-    
-    # Remove qualquer outra linha com NaN (para garantir)
+
+    # Remove qualquer outra linha com NaN (para garantir) - nao tem outra entao ok 
     df_train.dropna(inplace=True)
     df_test.dropna(inplace=True)
     
     return df_train, df_test
 
 # --- 2. Função de Preprocessamento ---
-# (Sua função, ligeiramente modificada para ser mais robusta)
 
 def preprocess(df):
     """Codifica o dataframe para o modelo."""
@@ -58,8 +57,50 @@ def train_model(X_train, y_train):
     rf.fit(X_train, y_train)
     return rf
 
+
+@st.cache_data
+def analyze_nas(data_path):
+    """
+    Carrega os dados brutos e retorna uma tabela (DataFrame) 
+    com a contagem e porcentagem de valores NAs por coluna.
+    """
+    # Carrega os dados brutos, ANTES de qualquer tratamento
+    df_raw = pd.read_csv(data_path)
+    
+    # Calcula a contagem de NAs
+    na_counts = df_raw.isna().sum()
+    
+    # Calcula a porcentagem de NAs
+    na_percentage = (na_counts / len(df_raw)) * 100
+    
+    # Cria a tabela de resumo
+    na_summary_df = pd.DataFrame({
+        'Coluna': na_counts.index,
+        'Qtd. de NAs': na_counts.values,
+        '% de NAs': na_percentage.values
+    })
+    
+    # Filtra para mostrar apenas colunas que REALMENTE têm NAs
+    na_summary_df = na_summary_df[na_summary_df['Qtd. de NAs'] > 0]
+    
+    # Ordena para mostrar as colunas com mais NAs primeiro
+    na_summary_df = na_summary_df.sort_values(by='% de NAs', ascending=False)
+    
+    # Formata a porcentagem para ficar mais bonita
+    na_summary_df['% de NAs'] = na_summary_df['% de NAs'].map('{:.2f}%'.format)
+    
+    return na_summary_df
+
 # --- 4. Carregamento e Preparação Principal ---
 df_train, df_test = load_data('train.csv', 'test.csv')
+
+#analisa os NAs do treino e teste 
+na_summary_table_train = analyze_nas('train.csv')
+na_summary_table_test = analyze_nas('test.csv')
+
+# Calcula o sumário estatístico (min, max, média, etc.) do df_train
+# .round(2) arredonda a média para 2 casas decimais
+data_summary = df_train.describe().round(2)
 
 # Processa os dados
 train_encoded = preprocess(df_train)
@@ -171,18 +212,192 @@ if st.sidebar.button("Prever Satisfação"):
     st.sidebar.subheader("Resultado da Previsão:")
     if prediction == 1:
         st.sidebar.success(f"**Cliente Satisfeito** (Probabilidade: {prediction_proba:.1%})")
-        st.sidebar.image("https://i.imgur.com/v28y6yT.png", width=100) # Ícone de polegar para cima
     else:
         st.sidebar.error(f"**Cliente Neutro ou Insatisfeito** (Probabilidade de satisfação: {prediction_proba:.1%})")
-        st.sidebar.image("https://i.imgur.com/a9QsS6x.png", width=100) # Ícone de polegar para baixo
 
 
 # --- Abas Principais ---
-tab1, tab2, tab3 = st.tabs(["📊 Análise Exploratória", "📈 Performance do Modelo", "💡 Fatores de Influência"])
+tab0, tab1, tab2, tab3 = st.tabs(["📃 Informações das Variáveis", "📊 Análise Exploratória", "📈 Performance do Modelo", "💡 Fatores de Influência"])
+
+with tab0: 
+    st.header("Glossário das Variáveis do Dataset")
+    st.markdown("Aqui está a descrição de todas as colunas usadas na análise, "
+                "incluindo seus valores mínimos, máximos e médios calculados a partir dos dados de treino.")
+
+    # --- Grupo 1: Infos do Passageiro ---
+    with st.expander("👤 Informações do Passageiro"):
+        st.markdown(f"""
+            ### Gender
+            **Descrição:** Gênero do passageiro.
+            - **Valores:** `Female` (Feminino), `Male` (Masculino)
+
+            ### Customer Type
+            **Descrição:** Tipo de cliente.
+            - **Valores:** `Loyal customer` (Cliente Fiel), `disloyal customer` (Cliente Ocasional)
+
+            ### Age
+            **Descrição:** Idade real do passageiro.
+            - **Mínimo:** `{data_summary.loc['min', 'Age']}`
+            - **Média:** `{data_summary.loc['mean', 'Age']}`
+            - **Máximo:** `{data_summary.loc['max', 'Age']}`
+
+            ### Type of Travel
+            **Descrição:** Propósito do voo.
+            - **Valores:** `Personal Travel` (Viagem Pessoal), `Business Travel` (Viagem de Negócios)
+
+            ### Class
+            **Descrição:** Classe da viagem no avião.
+            - **Valores:** `Business`, `Eco`, `Eco Plus`
+        """)
+    
+    # --- Grupo 2: Avaliações de Serviço ---
+    with st.expander("⭐ Avaliações de Serviço (Notas 0-5)"):
+        st.info("Para estas colunas: **0** significa 'Não Aplicável' e **1-5** são os níveis de satisfação (de Pior para Melhor).")
+        st.markdown(f"""
+            ### Inflight wifi service
+            **Descrição:** Satisfação com o **Wi-Fi** a bordo.
+            - **Mínimo:** `{data_summary.loc['min', 'Inflight wifi service']}`
+            - **Média:** `{data_summary.loc['mean', 'Inflight wifi service']}`
+            - **Máximo:** `{data_summary.loc['max', 'Inflight wifi service']}`
+
+            ### Departure/Arrival time convenient
+            **Descrição:** Satisfação com a **conveniência dos horários** de partida/chegada.
+            - **Mínimo:** `{data_summary.loc['min', 'Departure/Arrival time convenient']}`
+            - **Média:** `{data_summary.loc['mean', 'Departure/Arrival time convenient']}`
+            - **Máximo:** `{data_summary.loc['max', 'Departure/Arrival time convenient']}`
+            
+            ### Ease of Online booking
+            **Descrição:** Satisfação com a **facilidade da reserva online**.
+            - **Mínimo:** `{data_summary.loc['min', 'Ease of Online booking']}`
+            - **Média:** `{data_summary.loc['mean', 'Ease of Online booking']}`
+            - **Máximo:** `{data_summary.loc['max', 'Ease of Online booking']}`
+            
+            ### Gate location
+            **Descrição:** Satisfação com a **localização do portão** de embarque.
+            - **Mínimo:** `{data_summary.loc['min', 'Gate location']}`
+            - **Média:** `{data_summary.loc['mean', 'Gate location']}`
+            - **Máximo:** `{data_summary.loc['max', 'Gate location']}`
+            
+            ### Food and drink
+            **Descrição:** Satisfação com a **comida e bebida**.
+            - **Mínimo:** `{data_summary.loc['min', 'Food and drink']}`
+            - **Média:** `{data_summary.loc['mean', 'Food and drink']}`
+            - **Máximo:** `{data_summary.loc['max', 'Food and drink']}`
+            
+            ### Online boarding
+            **Descrição:** Satisfação com o **embarque online** (via app/web).
+            - **Mínimo:** `{data_summary.loc['min', 'Online boarding']}`
+            - **Média:** `{data_summary.loc['mean', 'Online boarding']}`
+            - **Máximo:** `{data_summary.loc['max', 'Online boarding']}`
+            
+            ### Seat comfort
+            **Descrição:** Satisfação com o **conforto do assento**.
+            - **Mínimo:** `{data_summary.loc['min', 'Seat comfort']}`
+            - **Média:** `{data_summary.loc['mean', 'Seat comfort']}`
+            - **Máximo:** `{data_summary.loc['max', 'Seat comfort']}`
+            
+            ### Inflight entertainment
+            **Descrição:** Satisfação com o **entretenimento a bordo**.
+            - **Mínimo:** `{data_summary.loc['min', 'Inflight entertainment']}`
+            - **Média:** `{data_summary.loc['mean', 'Inflight entertainment']}`
+            - **Máximo:** `{data_summary.loc['max', 'Inflight entertainment']}`
+            
+            ### On-board service
+            **Descrição:** Satisfação com o **serviço de bordo** (atendimento da tripulação).
+            - **Mínimo:** `{data_summary.loc['min', 'On-board service']}`
+            - **Média:** `{data_summary.loc['mean', 'On-board service']}`
+            - **Máximo:** `{data_summary.loc['max', 'On-board service']}`
+            
+            ### Leg room service
+            **Descrição:** Satisfação com o **espaço para as pernas**.
+            - **Mínimo:** `{data_summary.loc['min', 'Leg room service']}`
+            - **Média:** `{data_summary.loc['mean', 'Leg room service']}`
+            - **Máximo:** `{data_summary.loc['max', 'Leg room service']}`
+            
+            ### Baggage handling
+            **Descrição:** Satisfação com o **manuseio da bagagem**.
+            - **Mínimo:** `{data_summary.loc['min', 'Baggage handling']}`
+            - **Média:** `{data_summary.loc['mean', 'Baggage handling']}`
+            - **Máximo:** `{data_summary.loc['max', 'Baggage handling']}`
+            
+            ### Checkin service
+            **Descrição:** Satisfação com o **serviço de check-in**.
+            - **Mínimo:** `{data_summary.loc['min', 'Checkin service']}`
+            - **Média:** `{data_summary.loc['mean', 'Checkin service']}`
+            - **Máximo:** `{data_summary.loc['max', 'Checkin service']}`
+            
+            ### Inflight service
+            **Descrição:** Satisfação com o **serviço durante o voo** (ex: entrega de refeições).
+            - **Mínimo:** `{data_summary.loc['min', 'Inflight service']}`
+            - **Média:** `{data_summary.loc['mean', 'Inflight service']}`
+            - **Máximo:** `{data_summary.loc['max', 'Inflight service']}`
+            
+            ### Cleanliness
+            **Descrição:** Satisfação com a **limpeza** da aeronave.
+            - **Mínimo:** `{data_summary.loc['min', 'Cleanliness']}`
+            - **Média:** `{data_summary.loc['mean', 'Cleanliness']}`
+            - **Máximo:** `{data_summary.loc['max', 'Cleanliness']}`
+        """)
+    
+    # --- Grupo 3: Métricas de Voo ---
+    with st.expander("✈️ Métricas do Voo e Atrasos"):
+        st.markdown(f"""
+            ### Flight Distance
+            **Descrição:** A distância do voo.
+            - **Mínimo:** `{data_summary.loc['min', 'Flight Distance']}`
+            - **Média:** `{data_summary.loc['mean', 'Flight Distance']}`
+            - **Máximo:** `{data_summary.loc['max', 'Flight Distance']}`
+
+            ### Departure Delay in Minutes
+            **Descrição:** Minutos de atraso na partida.
+            - **Mínimo:** `{data_summary.loc['min', 'Departure Delay in Minutes']}`
+            - **Média:** `{data_summary.loc['mean', 'Departure Delay in Minutes']}`
+            - **Máximo:** `{data_summary.loc['max', 'Departure Delay in Minutes']}`
+            
+            ### Arrival Delay in Minutes
+            **Descrição:** Minutos de atraso na chegada.
+            - **Mínimo:** `{data_summary.loc['min', 'Arrival Delay in Minutes']}`
+            - **Média:** `{data_summary.loc['mean', 'Arrival Delay in Minutes']}`
+            - **Máximo:** `{data_summary.loc['max', 'Arrival Delay in Minutes']}`
+        """)
+
+    # --- Grupo 4: Variável Alvo ---
+    with st.expander("🎯 Variável Alvo (Target)"):
+        st.markdown("""
+            ### Satisfaction
+            **Descrição:** Nível de satisfação geral com a companhia aérea (esta é a variável que o modelo tenta prever).
+            - **Valores:** `satisfied` (Satisfeito), `neutral or dissatisfied` (Neutro ou Insatisfeito)
+        """)
+        
+    st.warning(
+    """
+    - Os dados apresentados das métricas são do dataset de treino.
+    - Para variáveis categóricas, realizamos o one-hot encoding.
+    """
+)
 
 with tab1:
     st.header("Análise Exploratória dos Dados")
-    st.markdown("Entendendo a distribuição dos dados de satisfação.")
+    st.markdown("Você pode encontrar a base original nesse [link](https://www.kaggle.com/datasets/teejmahal20/airline-passenger-satisfaction)")    
+    st.subheader("Análise de Valores Faltantes (NAs)")
+    st.markdown("Valores faltantes encontrados nos dados brutos (antes do tratamento):")
+    
+    st.markdown("Treino")
+    if na_summary_table_train.empty:
+        st.success("🎉 Ótimo! Nenhuma coluna com valores faltantes foi encontrada.")
+    else:
+        st.dataframe(na_summary_table_train, use_container_width=True)
+
+    st.markdown("Teste")
+    if na_summary_table_test.empty:
+        st.success("🎉 Ótimo! Nenhuma coluna com valores faltantes foi encontrada.")
+    else:
+        st.dataframe(na_summary_table_test, use_container_width=True)
+        
+    st.info("Substituimos pela mediana para tratar os NAs")
+    
+    st.warning("A partir daqui só realizamos com os dados de treino")
+
     
     col1, col2 = st.columns(2)
     
@@ -249,7 +464,7 @@ with tab3:
     st.markdown("Quais fatores o modelo (Random Forest) considerou mais importantes para prever a satisfação do cliente?")
     
     fig5, ax5 = plt.subplots(figsize=(10, 7))
-    sns.barplot(x=top15.values, y=top15.index, palette='mako', ax=ax5)
+    sns.barplot(x=top15.values, y=top15.index, palette='viridis', ax=ax5)
     ax5.set_title("Top 15 Fatores que Mais Influenciam a Satisfação")
     ax5.set_xlabel("Importância no Modelo")
     ax5.set_ylabel("Fator")
