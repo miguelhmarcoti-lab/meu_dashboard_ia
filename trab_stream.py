@@ -18,7 +18,7 @@ def load_data(train_path, test_path):
     df_train = pd.read_csv(train_path)
     df_test = pd.read_csv(test_path)
     
-    # Remove colunas desnecessárias que o seu código original removeu (Unnamed: 0, id)
+    # Remove colunas desnecessárias (Unnamed: 0, id)
     df_train = df_train.drop(columns=[col for col in df_train.columns if 'Unnamed' in col or col == 'id'], errors='ignore')
     df_test = df_test.drop(columns=[col for col in df_test.columns if 'Unnamed' in col or col == 'id'], errors='ignore')
 
